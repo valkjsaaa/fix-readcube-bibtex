@@ -29,11 +29,36 @@ def doi2bib(doi, cache):
 
     url = "http://dx.doi.org/" + doi
 
-    headers = {"accept": "application/x-bibtex"}
-    r = requests.get(url, headers=headers)
+    bib_headers = {"accept": "application/x-bibtex"}
+    r = requests.get(url, headers=bib_headers)
+    new_bibtex = r.text
 
-    cache[doi] = r.text
-    return r.text
+    json_headers = {"accept": "application/citeproc+json"}
+    r = requests.get(url, headers=json_headers)
+    r_json = json.loads(r.text)
+
+    new_bib_entry_local = {}
+    parsed_bibtex = bibtexparser.loads(new_bibtex)
+    if len(parsed_bibtex.entries) > 0:
+        new_bib_entry_local = parsed_bibtex.entries[0]
+        new_bib_entry_local['ID'] = bib_entry['ID']
+        if len(r_json["subtitle"]) > 0:
+            new_bib_entry_local["title"] = new_bib_entry_local["title"] + ": " + r_json["subtitle"][0]
+        if len(r_json["subtitle"]) > 1:
+            print("Multiple subtitles:", file=sys.stderr)
+            print(r_json["subtitle"], file=sys.stderr)
+        if "Andrew J. Ko" in new_bib_entry_local["author"]:
+            new_bib_entry_local["author"] = new_bib_entry_local["author"].replace("Andrew J. Ko", "Amy J. Ko")
+            print("Update Amy's name!", file=sys.stderr)
+        parsed_bibtex.entries[0] = new_bib_entry_local
+        print('%d / %d BibTex entries fixed!' % (i, j), file=sys.stderr)
+    else:
+        print("parse failed")
+        print(doi)
+        print(new_bibtex)
+
+    cache[doi] = bibtexparser.dumps(parsed_bibtex)
+    return new_bib_entry_local
 
 
 MAX_RETRY = 10
@@ -113,17 +138,8 @@ if __name__ == "__main__":
         else:
             doi = find_by_title(bib_entry['title'], title_cache)
         if doi is not None:
-            new_bibtex = safe_doi2bib(doi, bib_cache)
-            parsed_entries = bibtexparser.loads(new_bibtex).entries
-            if len(parsed_entries) > 0:
-                new_bib_entry = parsed_entries[0]
-                new_bib_entry['ID'] = bib_entry['ID']
-                bib_database.entries_dict[new_bib_entry['ID']] = new_bib_entry
-                print('%d / %d BibTex entries fixed!' % (i, j), file=sys.stderr)
-            else:
-                print("parse failed")
-                print(doi)
-                print(new_bibtex)
+            new_bib_entry = safe_doi2bib(doi, bib_cache)
+            bib_database.entries_dict[new_bib_entry['ID']] = new_bib_entry
             i += 1
         j += 1
         with open(BIB_CACHE_FILE_PATH, 'w') as cache_file:
