@@ -25,7 +25,7 @@ def doi2bib(doi, cache):
     """
 
     if doi in cache:
-        return cache[doi]
+        return bibtexparser.loads(cache[doi]).entries[0]
 
     url = "http://dx.doi.org/" + doi
 
