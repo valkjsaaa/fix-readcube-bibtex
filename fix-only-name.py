@@ -42,12 +42,12 @@ def doi2bib(doi, cache):
     if len(parsed_bibtex.entries) > 0:
         new_bib_entry_local = parsed_bibtex.entries[0]
         new_bib_entry_local['ID'] = bib_entry['ID']
-        if len(r_json["subtitle"]) > 0:
+        if "subtitle" in r_json and len(r_json["subtitle"]) > 0:
             new_bib_entry_local["title"] = new_bib_entry_local["title"] + ": " + r_json["subtitle"][0]
-        if len(r_json["subtitle"]) > 1:
+        if "subtitle" in r_json and len(r_json["subtitle"]) > 1:
             print("Multiple subtitles:", file=sys.stderr)
             print(r_json["subtitle"], file=sys.stderr)
-        if "Andrew J. Ko" in new_bib_entry_local["author"]:
+        if "author" in r_json and "Andrew J. Ko" in new_bib_entry_local["author"]:
             new_bib_entry_local["author"] = new_bib_entry_local["author"].replace("Andrew J. Ko", "Amy J. Ko")
             print("Update Amy's name!", file=sys.stderr)
         parsed_bibtex.entries[0] = new_bib_entry_local
@@ -62,6 +62,7 @@ def doi2bib(doi, cache):
 
 
 MAX_RETRY = 10
+STOP_ASKING = False
 
 
 def safe_doi2bib(doi, cache):
@@ -75,6 +76,7 @@ def safe_doi2bib(doi, cache):
 
 #%%
 def find_by_title(title, cache):
+    global STOP_ASKING
     if(title in cache):
         return cache[title]
     res = works.query(title).sort('score')
@@ -90,19 +92,39 @@ def find_by_title(title, cache):
 
     print("original: " + title)
     print("found: " + result_title)
+    if "subtitle" in first_result:
+        print("subtitle: " + str(first_result["subtitle"]))
+    print("doi: " + first_result["DOI"])
 
-    user_input = 'a'
-
-    while user_input not in 'ny':
-        print("y/n?")
-        user_input = sys.stdin.read(1)[0]
-        print(user_input)
+    # only keep a-Z0-9 in title
+    raw_title = ''.join(e for e in title if e.isalnum()).lower()
+    raw_result_title = ''.join(e for e in result_title if e.isalnum()).lower()
+    raw_result_title_and_subtitle = raw_result_title
+    if "subtitle" in first_result:
+        raw_result_title_and_subtitle += ''.join(e for e in first_result["subtitle"][0] if e.isalnum()).lower()
 
     doi_result = None
-    if user_input == 'y':
+    if len(raw_title) > 10 and (raw_title == raw_result_title or raw_title == raw_result_title_and_subtitle):
+        print("automatically matched")
         doi_result = first_result["DOI"]
+    else:
+        if not STOP_ASKING:
+            user_input = 'a'
 
-    cache[title] = doi_result
+            while user_input not in 'nys':
+                user_input = input("y/n/complete doi?/s")
+                print(user_input)
+                if user_input.startswith('https://doi.org/'):
+                    doi_result = user_input.replace('https://doi.org/', '')
+                    break
+
+            if user_input == 'y':
+                doi_result = first_result["DOI"]
+
+            if user_input == 's':
+                STOP_ASKING = True
+    if not STOP_ASKING or doi_result is not None:
+        cache[title] = doi_result
     return doi_result
 #%%
 
@@ -136,7 +158,8 @@ if __name__ == "__main__":
         if 'doi' in bib_entry:
             doi = bib_entry['doi']
         else:
-            doi = find_by_title(bib_entry['title'], title_cache)
+            if 'title' in bib_entry:
+                doi = find_by_title(bib_entry['title'], title_cache)
         if doi is not None:
             new_bib_entry = safe_doi2bib(doi, bib_cache)
             bib_database.entries_dict[new_bib_entry['ID']] = new_bib_entry

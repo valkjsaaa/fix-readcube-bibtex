@@ -64,7 +64,7 @@ if __name__ == "__main__":
     j = 1
     for bib_entry in bib_database.entries:
         if 'doi' in bib_entry:
-            new_bibtex = safe_doi2bib(bib_entry['doi'], cache)
+            new_bibtex = safe_doi2bib(bib_entry['doi'].replace("\\", ""), cache)
             new_bib_entry = bibtexparser.loads(new_bibtex).entries[0]
             new_bib_entry['ID'] = bib_entry['ID']
             bib_database.entries_dict[new_bib_entry['ID']] = new_bib_entry
